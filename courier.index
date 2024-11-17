@@ -1,0 +1,307 @@
+# app/__init__.py
+
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+
+# Initialize the SQLAlchemy object
+db = SQLAlchemy()
+
+def create_app():
+    app = Flask(__name__)
+    
+    # Configure your database URI
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///puppies.db'  # Example using SQLite
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Initialize the database with the app
+    db.init_app(app)
+
+    # Import routes here
+    from .routes import main
+    app.register_blueprint(main)
+
+    return app
+
+
+//model
+# app/models.py
+
+from . import db
+
+class Owner(db.Model):
+    __tablename__ = 'owners'  # Name of the table in the database
+
+    id = db.Column(db.Integer, primary_key=True)  # Primary key
+    name = db.Column(db.String(100), nullable=False)  # Owner's name
+    email = db.Column(db.String(120), unique=True, nullable=False)  # Owner's email
+    puppies = db.relationship('Puppy', backref='owner', lazy=True)  # Relationship with Puppy
+
+    def __repr__(self):
+        return f'<Owner {self.name}>'
+
+class Puppy(db.Model):
+    __tablename__ = 'puppies'  # Name of the table in the database
+
+    id = db.Column(db.Integer, primary_key=True)  # Primary key
+    name = db.Column(db.String(100), nullable=False)  # Puppy's name
+    breed = db.Column(db.String(100), nullable=False)  # Puppy's breed
+    age = db.Column(db.Integer)  # Puppy's age
+    owner_id = db.Column(db.Integer, db.ForeignKey('owners.id'), nullable=False)  # Foreign key to Owner
+
+    def __repr__(self):
+        return f'<Puppy {self.name}>'
+
+
+//route.py
+from flask import Blueprint, jsonify, request
+from .models import db, Puppy, Owner
+
+bp = Blueprint('puppy', __name__)
+
+@bp.route('/puppies', methods=['GET'])
+def get_puppies():
+    puppies = Puppy.query.all()
+    return jsonify([{
+        'id': puppy.id,
+        'name': puppy.name,
+        'breed': puppy.breed,
+        'birthdate': puppy.birthdate.isoformat(),
+        'price': puppy.price,
+        'seller_id': puppy.seller_id,
+        'buyer_id': puppy.buyer_id,
+        'date_purchased': puppy.date_purchased.isoformat() if puppy.date_purchased else None
+    } for puppy in puppies])
+
+@bp.route('/puppies/<int:puppy_id>', methods=['GET'])
+def get_puppy(puppy_id):
+    puppy = Puppy.query.get_or_404(puppy_id)
+    return jsonify({
+        'id': puppy.id,
+        'name': puppy.name,
+        'breed': puppy.breed,
+        'birthdate': puppy.birthdate.isoformat(),
+        'price': puppy.price,
+        'seller_id': puppy.seller_id,
+        'buyer_id': puppy.buyer_id,
+        'date_purchased': puppy.date_purchased.isoformat() if puppy.date_purchased else None
+    })
+
+@bp.route('/puppies', methods=['POST'])
+def add_puppy():
+    data = request.json
+    new_puppy = Puppy(
+        name=data['name'],
+        breed=data['breed'],
+        birthdate=data['birthdate'],
+        price=data['price'],
+        seller_id=data['seller_id']
+    )
+    db.session.add(new_puppy)
+    db.session.commit()
+    return jsonify({'id': new_puppy.id}), 201
+
+@bp.route('/puppies/<int:puppy_id>', methods=['PUT'])
+def update_puppy(puppy_id):
+    data = request.json
+    puppy = Puppy.query.get_or_404(puppy_id)
+    puppy.name = data.get('name', puppy.name)
+    puppy.breed = data.get('breed', puppy.breed)
+    puppy.birthdate = data.get('birthdate', puppy.birthdate)
+    puppy.price = data.get('price', puppy.price)
+    db.session.commit()
+    return jsonify({'message': 'Puppy updated successfully'})
+
+@bp.route('/puppies/<int:puppy_id>', methods=['DELETE'])
+def delete_puppy(puppy_id):
+    puppy = Puppy.query.get_or_404(puppy_id)
+    db.session.delete(puppy)
+    db.session.commit()
+    return jsonify({'message': 'Puppy deleted successfully'})
+
+@bp.route('/puppies/suggest', methods=['GET'])
+def suggest_puppies():
+    # Get all puppies that are not yet owned
+    available_puppies = Puppy.query.filter(Puppy.buyer_id.is_(None)).all()
+    return jsonify([{
+        'id': puppy.id,
+        'name': puppy.name,
+        'breed': puppy.breed,
+        'birthdate': puppy.birthdate.isoformat(),
+        'price': puppy.price,
+        'seller_id': puppy.seller_id
+    } for puppy in available_puppies])
+
+
+//api.js
+import axios from 'axios';
+
+const API_URL = 'http://localhost:5000/puppies';
+
+export const getPuppies = () => {
+    return axios.get(API_URL);
+};
+
+export const getPuppy = (puppyId) => {
+    return axios.get(`${API_URL}/${puppyId}`);
+};
+
+export const addPuppy = (puppy) => {
+    return axios.post(API_URL, puppy);
+};
+
+export const updatePuppy = (puppyId, puppy) => {
+    return axios.put(`${API_URL}/${puppyId}`, puppy);
+};
+
+export const deletePuppy = (puppyId) => {
+    return axios.delete(`${API_URL}/${puppyId}`);
+};
+
+export const suggestPuppies = () => {
+    return axios.get(`${API_URL}/suggest`);
+};
+
+
+//puppyform.js
+<template>
+  <div>
+    <h2>{{ isEdit ? 'Edit Puppy' : 'Add Puppy' }}</h2>
+    <form @submit.prevent="submitForm">
+      <div>
+        <label>Name:</label>
+        <input v-model="puppy.name" required />
+      </div ```vue
+      <div>
+        <label>Breed:</label>
+        <input v-model="puppy.breed" required />
+      </div>
+      <div>
+        <label>Birthdate:</label>
+        <input type="date" v-model="puppy.birthdate" required />
+      </div>
+      <div>
+        <label>Price:</label>
+        <input type="number" v-model="puppy.price" required />
+      </div>
+      <div>
+        <label>Seller ID:</label>
+        <input type="number" v-model="puppy.seller_id" required />
+      </div>
+      <button type="submit">{{ isEdit ? 'Update' : 'Add' }} Puppy</button>
+      <button type="button" @click="cancel">Cancel</button>
+    </form>
+  </div>
+</template>
+
+<script>
+import { addPuppy, updatePuppy } from '../services/api';
+
+export default {
+  props: {
+    puppy: {
+      type: Object,
+      default: () => ({})
+    },
+    isEdit: {
+      type: Boolean,
+      default: false
+    }
+  },
+  methods: {
+    async submitForm() {
+      if (this.isEdit) {
+        await updatePuppy(this.puppy.id, this.puppy);
+      } else {
+        await addPuppy(this.puppy);
+      }
+      this.$emit('refresh');
+    },
+    cancel() {
+      this.$emit('cancel');
+    }
+  }
+};
+</script>
+
+//puppylist.js
+<template>
+  <div>
+    <h1>Puppy List</h1>
+    <button @click="fetchSuggestedPuppies">Suggest Puppies</button>
+    <ul>
+      <li v-for="puppy in puppies" :key="puppy.id">
+        {{ puppy.name }} - {{ puppy.breed }} - {{ puppy.birthdate }}
+        <button @click="editPuppy(puppy)">Edit</button>
+        <button @click="removePuppy(puppy.id)">Delete</button>
+      </li>
+    </ul>
+    <PuppyForm v-if="isEditing" :puppy="selectedPuppy" :isEdit="true" @refresh="fetchPuppies" @cancel="cancelEdit" />
+    <PuppyForm v-if="!isEditing && isAdding" :puppy="newPuppy" @refresh="fetchPuppies" @cancel="cancelAdd" />
+    <button @click="startAdding">Add Puppy</button>
+  </div>
+</template>
+
+<script>
+import { getPuppies, deletePuppy, suggestPuppies } from '../services/api';
+import PuppyForm from './PuppyForm.vue';
+
+export default {
+  data() {
+    return {
+      puppies: [],
+      isEditing: false,
+      isAdding: false,
+      selectedPuppy: {},
+      newPuppy: {
+        name: '',
+        breed: '',
+        birthdate: '',
+        price: '',
+        seller_id: ''
+      }
+    };
+  },
+  components: {
+    PuppyForm
+  },
+  methods: {
+    async fetchPuppies() {
+      const response = await getPuppies();
+      this.puppies = response.data;
+    },
+    async removePuppy(puppyId) {
+      await deletePuppy(puppyId);
+      this.fetchPuppies();
+    },
+    async fetchSuggestedPuppies() {
+      const response = await suggestPuppies();
+      this.puppies = response.data;
+    },
+    startAdding() {
+      this.isAdding = true;
+      this.newPuppy = {
+        name: '',
+        breed: '',
+        birthdate: '',
+        price: '',
+        seller_id: ''
+      };
+    },
+    editPuppy(puppy) {
+      this.selectedPuppy = puppy;
+      this.isEditing = true;
+    },
+    cancelEdit() {
+      this.isEditing = false;
+      this.selectedPuppy = {};
+    },
+    cancelAdd() {
+      this.isAdding = false;
+      this.newPuppy = {};
+    }
+  },
+  created() {
+    this.fetchPuppies();
+  }
+};
+</script>
